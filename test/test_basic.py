@@ -2,7 +2,6 @@ import unittest
 
 from rowpack import RowpackReader, RowpackWriter, Schema
 
-
 class TestBasic(unittest.TestCase):
 
     def test_basic(self):
