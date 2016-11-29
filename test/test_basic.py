@@ -83,6 +83,7 @@ class TestBasic(unittest.TestCase):
         for e in avro_schema['fields']:
             rp_schema.add_column(name=e['name'], datatype=e['type'])
 
+
         with Timer() as t:
 
             rpw = RowpackWriter('/tmp/foo.rp', rp_schema)
@@ -94,7 +95,29 @@ class TestBasic(unittest.TestCase):
 
         print('Write RP               ', float(N) / t.elapsed)
 
+        with Timer() as t:
 
+            rpw = RowpackWriter('/tmp/foo_rows.rp', rp_schema)
+
+            rpw.write_rows(rows)
+
+            rpw.close()
+
+        print('Write RP rows          ', float(N) / t.elapsed)
+
+        with Timer() as t:
+
+            rpr = RowpackReader('/tmp/foo.rp')
+
+            sum = 0
+            for row in rpr:
+                sum += row[0]
+
+            rpw.close()
+
+        print('Read RP                ', float(N) / t.elapsed)
+
+        # This runs about twice as fast under pypy
         with Timer() as t:
             with open('/tmp/avro_records.avro', 'wb') as out:
                 avr = fastavro.Writer(out, avro_schema)
@@ -104,12 +127,24 @@ class TestBasic(unittest.TestCase):
 
         print('Write AVRO records     ', float(N) / t.elapsed)
 
+        with Timer() as t:
+            with open('/tmp/avro_records.avro','rb') as fo:
+                avr = fastavro.reader(fo)
+                sum = 0
+                for row in avr:
+                    sum += row['rand']
+
+
+        print('Read AVRO records      ', float(N) / t.elapsed)
+
         avro_schema = {
             "type": "array",
             "name": "Test",
             "items": [ e['type'] for e in avro_schema['fields']]
         }
 
+
+        # Oddly, AVRO records are smaller and faster than arrays.
         with Timer() as t:
             with open('/tmp/avro_array2.avro', 'wb') as out:
                 avr = fastavro.Writer(out, avro_schema)
@@ -118,7 +153,14 @@ class TestBasic(unittest.TestCase):
 
         print('Write AVRO array       ', float(N) / t.elapsed)
 
+        with Timer() as t:
+            with open('/tmp/avro_array2.avro', 'rb') as out:
+                avr = fastavro.reader(out, avro_schema)
+                sum = 0
+                for row in avr:
+                    sum += row[0]
 
+        print('Read AVRO array        ', float(N) / t.elapsed)
 
 
 if __name__ == '__main__':
