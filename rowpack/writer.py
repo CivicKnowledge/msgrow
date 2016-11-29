@@ -19,7 +19,7 @@ from gzipfile import GzipFile
 import base
 from base import MPRowsFile
 
-MAX_CACHE = 100
+MAX_CACHE = 10000
 
 class RowpackWriter(object):
     MAGIC = base.MAGIC

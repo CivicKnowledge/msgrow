@@ -110,12 +110,17 @@ class TestBasic(unittest.TestCase):
             rpr = RowpackReader('/tmp/foo.rp')
 
             sum = 0
+            count = 0
             for row in rpr:
                 sum += row[0]
+                count += 1
+
+
 
             rpw.close()
 
         print('Read RP                ', float(N) / t.elapsed)
+        print count, sum
 
         # This runs about twice as fast under pypy
         with Timer() as t:
@@ -131,11 +136,13 @@ class TestBasic(unittest.TestCase):
             with open('/tmp/avro_records.avro','rb') as fo:
                 avr = fastavro.reader(fo)
                 sum = 0
+                count = 0
                 for row in avr:
-                    sum += row['rand']
-
+                    sum += row['id']
+                    count += 1
 
         print('Read AVRO records      ', float(N) / t.elapsed)
+        print count, sum
 
         avro_schema = {
             "type": "array",
@@ -157,10 +164,14 @@ class TestBasic(unittest.TestCase):
             with open('/tmp/avro_array2.avro', 'rb') as out:
                 avr = fastavro.reader(out, avro_schema)
                 sum = 0
+                count = 0
                 for row in avr:
                     sum += row[0]
+                    count += 1
+
 
         print('Read AVRO array        ', float(N) / t.elapsed)
+        print count, sum
 
 
 if __name__ == '__main__':
