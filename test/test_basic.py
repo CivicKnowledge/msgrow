@@ -2,6 +2,7 @@ import unittest
 
 from rowpack import RowpackReader, RowpackWriter, Schema
 
+
 class TestBasic(unittest.TestCase):
 
     def test_basic(self):
@@ -9,29 +10,40 @@ class TestBasic(unittest.TestCase):
         s = Schema()
 
         for i in range(10):
-            s.add_column(name='col'+str(i), datatype=int)
+            s.add_column(name='col' + str(i), datatype=int)
 
-        rpw = RowpackWriter('/tmp/foo.rp', s)
+        with RowpackWriter('/tmp/foo.rp', 'wb') as rpw:
+            for i in range(10):
+                row = range(10)
+                rpw.write_row(row)
 
-        for i in range(10):
+            rpw.schema = s
+            rpw.meta = {
+                'foo': 'bar'
+            }
 
-            row = range(10)
+        with RowpackReader('/tmp/foo.rp') as rpr:
+            self.assertEquals(42, rpr.data_start)
+            self.assertEquals(83, rpr.data_end)
+            self.assertEquals(1676, rpr.meta_end)
+            self.assertEquals({u'foo': u'bar'}, rpr.meta)
+            self.assertEquals(
+                [u'col0', u'col1', u'col2', u'col3', u'col4', u'col5', u'col6', u'col7', u'col8', u'col9'],
+                rpr.headers)
 
-            rpw.write_row(row)
+            rows = [dict(zip(rpr.schema.headers, row)) for row in rpr]
 
-        rpw.close()
+            self.assertEqual(10, len(rows))
+            self.assertEqual(range(10), sorted(rows[0].values()))
 
-        rpr = RowpackReader('/tmp/foo.rp')
-        print "Start: ", rpr.data_start
-        print "End: ", rpr.data_end
-        print "---- Columns "
-        print [ str(c) for c in rpr.schema]
-        print "---- Rows "
+        with RowpackWriter('/tmp/foo.rp', 'r+b') as rpw:
+            rpw.meta['bingo'] = 'baz'
 
-        headers = rpr.schema.headers
-
-        for row in rpr:
-            print dict(zip(headers, row))
+        with RowpackReader('/tmp/foo.rp') as rpr:
+            self.assertEquals({u'bingo': u'baz', u'foo': u'bar'}, rpr.meta)
+            self.assertEquals(
+                [u'col0', u'col1', u'col2', u'col3', u'col4', u'col5', u'col6', u'col7', u'col8', u'col9'],
+                rpr.headers)
 
     def test_schema(self):
 
@@ -44,12 +56,12 @@ class TestBasic(unittest.TestCase):
         for c in s2:
             print c.pos, c.name, c.datatype
 
-    def make_simple_rw_data(self):
+    def make_simple_rw_data(self, n=None):
         import datetime
         from random import randint, random
         from uuid import uuid4
 
-        N = 50000
+        N = n if n is not None else 50000
 
         # Basic read/ write tests.
 
@@ -60,6 +72,144 @@ class TestBasic(unittest.TestCase):
         rows = [row(i) for i in range(N)]
 
         return N, headers, rows, [type(e) for e in row(i)]
+
+    def schemas(self):
+
+        avro_schema = {
+            "type": "record",
+            "name": "Test",
+            "fields": [
+                {"type": "int", "name": "id"},
+                {"type": "int", "name": "rand"},
+                {"type": "string", "name": "uuid"},
+                {"type": "string", "name": "randstr"},
+                {"type": "float", "name": "float"},
+            ]
+        }
+
+        rp_schema = Schema()
+        for e in avro_schema['fields']:
+            rp_schema.add_column(name=e['name'], datatype=e['type'])
+
+        return avro_schema, rp_schema
+
+    def test_stats(self):
+
+        N, headers, rows, types = self.make_simple_rw_data(1000)
+
+        avro_schema, rp_schema = self.schemas();
+
+        rpw = RowpackWriter('/tmp/foo.rp', schema=rp_schema)
+
+        for row in rows:
+            rpw.write_row(row)
+
+        rpw.stats()
+
+        rpw.close()
+
+        with RowpackReader('/tmp/foo.rp') as rpr:
+            sum = 0
+            count = 0
+            for row in rpr:
+                sum += row[0]
+                count += 1
+
+            self.assertEqual(1000, rpr.schema[0].count)
+            self.assertEqual(499.0, rpr.schema[0].median)
+            self.assertEqual('rand', rpr.schema[1].name)
+            self.assertEqual(1000, rpr.schema[2].nuniques)
+
+    def test_rowintuit(self):
+        from rowpack import intuit_rows
+        from rowgenerators import RowGenerator
+        from itertools import islice
+
+        rg = RowGenerator(url='http://public.source.civicknowledge.com/example.com/sources/renter_cost.csv')
+
+        path = '/tmp/foo.rp'
+
+        with RowpackWriter(path) as rpw:
+            for row in rg:
+                rpw.write_row(row)
+
+        intuit_rows(path)
+
+    def test_typeintuit(self):
+        from rowpack import intuit_types, intuit_rows, run_stats
+        from rowgenerators import RowGenerator
+
+        path = '/tmp/foo.rp'
+
+        if False:
+            rg = RowGenerator(url='http://public.source.civicknowledge.com/example.com/sources/renter_cost.csv')
+
+            with RowpackWriter(path) as rpw:
+                for row in rg:
+                    rpw.write_row(row)
+
+        intuit_rows(path)
+
+        intuit_types(path)
+
+        run_stats(path)
+
+
+    def test_speed(self):
+        from contexttimer import Timer
+
+        N, headers, rows, types = self.make_simple_rw_data()
+
+        avro_schema, rp_schema = self.schemas();
+
+        with Timer() as t:
+
+            rpw = RowpackWriter('/tmp/foo.rp')
+
+            for row in rows:
+                rpw.write_row(row)
+
+            rpw.close()
+
+        print('Write RP               ', float(N) / t.elapsed)
+
+        with Timer() as t:
+
+            with RowpackReader('/tmp/foo.rp') as rpr:
+                sum = 0
+                count = 0
+                for row in rpr:
+                    sum += row[0]
+                    count += 1
+
+        print('Read RP                ', float(N) / t.elapsed)
+
+        self.assertEquals(N, count)
+        self.assertEquals(1249975000, sum)
+
+        with Timer() as t:
+
+            with RowpackWriter('/tmp/foo_rows.rp') as rpw:
+                rpw.write_rows(rows)
+
+        print('Write RP rows          ', float(N) / t.elapsed)
+
+        with Timer() as t:
+
+            rpr = RowpackReader('/tmp/foo.rp')
+
+            sum = 0
+            count = 0
+            for row in rpr:
+                sum += row[0]
+                count += 1
+
+            rpw.close()
+
+        print('Read RP rows           ', float(N) / t.elapsed)
+
+        self.assertEquals(N, count)
+        self.assertEquals(1249975000, sum)
 
     def test_avro_read_write(self):
         import fastavro
@@ -83,21 +233,19 @@ class TestBasic(unittest.TestCase):
         for e in avro_schema['fields']:
             rp_schema.add_column(name=e['name'], datatype=e['type'])
 
-
         with Timer() as t:
 
-            rpw = RowpackWriter('/tmp/foo.rp', rp_schema)
+            with RowpackWriter('/tmp/foo.rp') as rpw:
 
-            for row in rows:
-                rpw.write_row(row)
+                for row in rows:
+                    rpw.write_row(row)
 
-            rpw.close()
 
         print('Write RP               ', float(N) / t.elapsed)
 
         with Timer() as t:
 
-            rpw = RowpackWriter('/tmp/foo_rows.rp', rp_schema)
+            rpw = RowpackWriter('/tmp/foo_rows.rp')
 
             rpw.write_rows(rows)
 
@@ -115,8 +263,6 @@ class TestBasic(unittest.TestCase):
                 sum += row[0]
                 count += 1
 
-
-
             rpw.close()
 
         print('Read RP                ', float(N) / t.elapsed)
@@ -133,7 +279,7 @@ class TestBasic(unittest.TestCase):
         print('Write AVRO records     ', float(N) / t.elapsed)
 
         with Timer() as t:
-            with open('/tmp/avro_records.avro','rb') as fo:
+            with open('/tmp/avro_records.avro', 'rb') as fo:
                 avr = fastavro.reader(fo)
                 sum = 0
                 count = 0
@@ -147,9 +293,8 @@ class TestBasic(unittest.TestCase):
         avro_schema = {
             "type": "array",
             "name": "Test",
-            "items": [ e['type'] for e in avro_schema['fields']]
+            "items": [e['type'] for e in avro_schema['fields']]
         }
-
 
         # Oddly, AVRO records are smaller and faster than arrays.
         with Timer() as t:
@@ -168,7 +313,6 @@ class TestBasic(unittest.TestCase):
                 for row in avr:
                     sum += row[0]
                     count += 1
-
 
         print('Read AVRO array        ', float(N) / t.elapsed)
         print count, sum

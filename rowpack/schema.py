@@ -6,7 +6,18 @@
 """
 
 import sys
-from six import text_type
+from six import text_type, binary_type
+import datetime
+
+types_map = {
+    'int': int,
+    'float': float,
+    'str': binary_type,
+    'text': text_type,
+    'date': datetime.date,
+    'time': datetime.time,
+    'datetime': datetime.datetime
+}
 
 class Column(object):
 
@@ -21,25 +32,25 @@ class Column(object):
         except:
             self.datatype = text_type(kwargs.get('datatype'))
 
-        # Reserve space by using the largest integers. These will force msgpack to
-        # write the largest size integer
-
-        self.count = int(kwargs.get('count', sys.maxint))
+        self.count = float(kwargs.get('count', 'nan'))
         self.min = float(kwargs.get('min', 'nan'))
         self.mean = float(kwargs.get('mean', 'nan'))
+        self.median = float(kwargs.get('median', kwargs.get('p50', 'nan')))
         self.max = float(kwargs.get('max', 'nan'))
         self.std = float(kwargs.get('std', 'nan'))
-        self.nuniques = int(kwargs.get('nuniques', sys.maxint))
-
-        # FIXME. The reserved space should be for up to 100 elements of the
-        # datatype, not 2K
+        self.nuniques = float(kwargs.get('nuniques', 'nan'))
         self.uvalues = kwargs.get('uvalues', None)
 
     def __str__(self):
 
         return "<col {} {} {}>".format(self.pos, self.name, self.datatype)
 
+    @property
+    def python_type(self):
+        return types_map.get(self.datatype, binary_type)
 
+
+    @property
     def dict(self):
 
         return self.__dict__
@@ -60,20 +71,21 @@ class Schema(object):
 
         self.append(Column(**kwargs))
 
-    @property
-    def headers(self):
-        """Return the list of column names"""
-        return [c.name for c in self.columns]
+    def __getitem__(self, item):
+        return self.columns[item]
 
     @property
     def headers(self):
         """Return the list of column names"""
         return [c.name for c in self.columns]
 
+    @property
+    def headers(self):
+        """Return the list of column names"""
+        return [c.name for c in self.columns]
 
     def to_rows(self):
-
-        return [c.dict() for c in self.columns]
+        return [c.dict for c in self.columns]
 
     def __iter__(self):
         return iter(self.columns)

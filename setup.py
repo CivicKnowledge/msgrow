@@ -55,7 +55,8 @@ setup(
     classifiers=classifiers,
     entry_points={
         'console_scripts': [
-            'rowpack=rowpack.cli:main',
+            'rowpack=rowpack.cli:rowpack',
+            'rpingest=rowpack.cli:rpingest',
         ],
     },
 )
