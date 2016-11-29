@@ -15,7 +15,6 @@ from six import iteritems, text_type
 from functools import reduce
 
 from gzipfile import GzipFile
-from ambry_sources.util import get_perm, is_group_readable
 
 import base
 from base import MPRowsFile
