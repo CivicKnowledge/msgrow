@@ -166,6 +166,7 @@ class RowpackWriter(object):
             raise RowpackError("Can't write to existing file; can only update metadata" )
 
         self.n_rows += len(rows)
+
         self._zfh.write(msgpack.packb(rows, default=encode_obj, encoding='utf-8'))
 
 

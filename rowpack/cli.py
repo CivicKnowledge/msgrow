@@ -60,16 +60,6 @@ def rowpack(args=None):
     types_fields = ['header', 'type_count', 'length',  'floats',  'ints', 'unicode',  'strs', 'dates',
                     'times', 'datetimes', 'nones', 'has_codes']
 
-    types_getter = itemgetter(*types_fields)
-
-    stats_fields_all = ['name', 'stat_count', 'nuniques', 'mean', 'min', 'p25', 'p50', 'p75', 'max', 'std',
-                        'uvalues', 'lom',  'skewness', 'kurtosis', 'flags', 'hist', 'text_hist']
-
-    stats_fields = ['name', 'lom', 'stat_count', 'nuniques', 'mean', 'min', 'p25', 'p50', 'p75',
-                    'max', 'std', 'text_hist']
-
-    stats_getter = itemgetter(*stats_fields)
-
     path = args.path[0]
 
     if args.csv:
@@ -103,7 +93,13 @@ def rowpack(args=None):
     if args.meta:
         import json
         with RowpackReader(path) as r:
-            print json.dumps(r.meta,indent=4)
+            d = dict(r.meta.items() )
+            try:
+                del d['types'] # Types is a lot of data
+            except KeyError:
+                pass
+
+            print json.dumps(d,indent=4)
 
         return
 
@@ -132,24 +128,24 @@ def rowpack(args=None):
 
 
     if args.head or args.tail:
-        with f.reader as r:
+        with RowpackReader(path) as r:
             print('\nHEAD' if args.head else '\nTAIL')
             MAX_LINE = 80
-            headers = []
+
 
             # Only show so may cols as will fit in an 80 char line.
-            for h in r.headers:
-                if len(' '.join(headers+[h])) > MAX_LINE:
-                    break
-                headers.append(h)
+            if r.headers:
+                headers = []
+                for h in r.headers:
+                    if len(' '.join(headers+[h])) > MAX_LINE:
+                        break
+                    headers.append(h)
+            else:
+                headers = range(1,11)
 
-            itr = r.raw if args.raw else r.rows
+            start, end = (None, 15) if args.head else (r.n_rows-15, r.n_rows)
 
-            rows = []
-
-            start, end = (None, 10) if args.head else (r.n_rows-10, r.n_rows)
-
-            slc = islice(itr, start, end)
+            slc = islice(r, start, end)
 
             rows = [(i,)+row[:len(headers)] for i, row in enumerate(slc, start if start else 0)]
 
@@ -190,16 +186,44 @@ def ingest_make_arg_parser(parser=None):
             description='Ingest tabular data into a rowpack file. version:'.format(__version__))
 
     parser.add_argument('url',  type=binary_type, help='Input url')
-    parser.add_argument('path', type=binary_type, help='Output file path')
+    parser.add_argument('path', nargs='?', type=binary_type, help='Output file path')
 
     return parser
+
+
+def resolve_url(ss, cache):
+
+    from rowgenerators.fetch import inspect
+
+    while True:
+        print ss.url_str()
+        specs = inspect(ss, cache)
+
+        if not specs:
+            return ss
+
+        for i, e in enumerate(specs):
+            print i, e.url_str()
+
+        while True:
+            i = raw_input('Select: ')
+            try:
+                ss = specs[int(i)]
+                break
+            except ValueError:
+                print "ERROR: enter an integer"
+            except IndexError:
+                print "ERROR: entry out of range"
+
 
 
 def rpingest(args=None):
     from fs.opener import fsopendir
     import tempfile
-    from rowgenerators import RowGenerator
-    from . import RowpackWriter
+    from rowgenerators import RowGenerator, SourceSpec
+    from . import RowpackWriter, RowpackReader, intuit_rows, intuit_types, run_stats
+    from tableintuit.exceptions import RowIntuitError
+    import sys
 
     cache = fsopendir(tempfile.gettempdir())
 
@@ -207,15 +231,40 @@ def rpingest(args=None):
         parser = ingest_make_arg_parser()
         args = parser.parse_args()
 
-    print args.__dict__
+    ss = SourceSpec(**args.__dict__)
 
-    gen = RowGenerator(cache=cache, **args.__dict__)
+    ss = resolve_url(ss, cache)
 
-    with RowpackWriter(args.path) as rpw:
+    gen = ss.get_generator(cache)
+
+    path = args.path
+
+    if not path:
+        from rowgenerators.util import parse_url_to_dict
+        from os.path import basename
+        parts = parse_url_to_dict(args.url)
+        path = basename(parts['path'])+'.rp'
+
+    print 'Ingesting', path
+
+    with RowpackWriter(path) as w:
         for row in gen:
-            rpw.write_row(row)
+            w.write_row(row)
 
-        print "Wrote {} rows".format(rpw.n_rows)
+        w.meta['url'] = args.url
+
+
+    # Need to re-open b/c n_rows isn't set until the writer is closed
+    with RowpackReader(path) as r:
+        print "Wrote {} rows".format(r.n_rows)
+
+    try:
+        intuit_rows(path)
+        intuit_types(path)
+        run_stats(path)
+    except RowIntuitError as e:
+        print "ERROR ", e
+        sys.exit(1)
 
 
 if __name__ == '__main__':
