@@ -157,6 +157,7 @@ class TestBasic(unittest.TestCase):
 
     def test_speed(self):
         from contexttimer import Timer
+        import csv
 
         N, headers, rows, types = self.make_simple_rw_data()
 
@@ -210,6 +211,30 @@ class TestBasic(unittest.TestCase):
 
         self.assertEquals(N, count)
         self.assertEquals(1249975000, sum)
+
+
+        with Timer() as t:
+            with open('/tmp/foo.csv','w') as f:
+                w = csv.writer(f)
+
+                for row in rows:
+                    w.writerow(row)
+
+        print('Write CSV              ', float(N) / t.elapsed)
+
+        with Timer() as t:
+            with open('/tmp/foo.csv') as f:
+                r = csv.reader(f)
+
+                sum = 0
+                count = 0
+                for row in r:
+
+                    row = [int(row[0]), int(row[1]), row[2], row[3], float(row[4]) ]
+                    sum += row[0]
+                    count += 1
+
+        print('Read CSV               ', float(N) / t.elapsed)
 
     def test_avro_read_write(self):
         import fastavro

@@ -21,49 +21,6 @@ from . import RowpackWriter, RowpackReader, intuit_rows, intuit_types, run_stats
 from .__meta__ import __version__
 
 
-def rowpack_make_arg_parser(parser=None):
-    if not parser:
-        parser = argparse.ArgumentParser(
-            prog='ampr',
-            description='Ambry Message Pack Rows file access version:'.format(__version__))
-
-    group = parser.add_mutually_exclusive_group()
-
-    parser.add_argument('-f', '--info', action='store_true',
-                       help='Show general information header')
-
-    group.add_argument('-m', '--meta', action='store_true',
-                        help='Show metadata')
-    group.add_argument('-t', '--types', action='store_true',
-                       help='Show types table')
-    group.add_argument('-s', '--schema', action='store_true',
-                        help='Show the schema')
-    group.add_argument('-r', '--rowspec', action='store_true',
-                        help='Print the rowspec')
-    group.add_argument('-H', '--head', action='store_true',
-                        help='Display the first 10 records. Will only display 80 chars wide')
-    group.add_argument('-T', '--tail', action='store_true',
-                        help='Display the first last 10 records. Will only display 80 chars wide')
-    parser.add_argument('-e', '--edit', action='store_true',
-                        help='With -H or -T, edit line types')
-    group.add_argument('-i', '--intuition', action='store_true',
-                        help='Run type intuition and stats')
-    group.add_argument('-c', '--csv', help='Output the entire file as CSV')
-    parser.add_argument('-R', '--raw', action='store_true',
-                        help='With --csv, return all rows, ignoring rowspec')
-
-    group.add_argument('-b', '--table', action='store_true',
-                        help='Display a selection of records in a table')
-    group.add_argument('-l', '--limit', help='The number of rows to output for CSV ')
-
-    group = parser.add_argument_group()
-    group.add_argument('-I', '--ingest', help='Ingest a url and write the result to a rowpack file. ')
-    group.add_argument('--encoding', help='Set ingestion encoding')
-
-    parser.add_argument('path', nargs='?', type=binary_type, help='File path')
-
-    return parser
-
 
 def mk_row_types(r):
     if 'rowspec' not in r.meta:
@@ -273,18 +230,6 @@ def row_spec_str(path=None, r=None):
     return out
 
 
-def ingest_make_arg_parser(parser=None):
-    if not parser:
-        parser = argparse.ArgumentParser(
-            prog='rpingest',
-            description='Ingest tabular data into a rowpack file. version:'.format(__version__))
-
-    parser.add_argument('url', type=binary_type, help='Input url')
-    parser.add_argument('path', nargs='?', type=binary_type, help='Output file path')
-
-    return parser
-
-
 def resolve_url(ss, cache):
     """Return a list of sub-components of a Spec, such as files in a ZIP archive,
     or worksheed in a spreadsheet"""
@@ -312,7 +257,7 @@ def resolve_url(ss, cache):
                 print "ERROR: entry out of range"
 
 
-def ingest(url, path, cache):
+def ingest(url, path, cache, encoding=None, filetype=None, urlfiletype = None):
 
     from rowgenerators import RowGenerator, SourceSpec
 
@@ -324,7 +269,16 @@ def ingest(url, path, cache):
     # so i'm punting. Until there is a better solution, users should use a caracter detecting program,
     # then explicitly set the encoding parameter.
     for encoding in ('ascii', 'utf8', 'latin1'):
-        ss = resolve_url(SourceSpec(url=url,encoding=encoding), cache)
+
+        d = dict(
+            url=url,
+            encoding=encoding,
+            filetype=filetype,
+            urlfiletype=urlfiletype
+        )
+
+
+        ss = resolve_url(SourceSpec(**d), cache)
         gen = ss.get_generator(cache)
 
         if not path:
@@ -378,7 +332,13 @@ def get_cache():
 
 def rpingest(args=None):
 
-    parser = ingest_make_arg_parser()
+    parser = argparse.ArgumentParser(
+        prog='rpingest',
+        description='Ingest tabular data into a rowpack file. version:'.format(__version__))
+
+    parser.add_argument('url', type=binary_type, help='Input url')
+    parser.add_argument('path', nargs='?', type=binary_type, help='Output file path')
+
     args = parser.parse_args()
 
     ingest(args.url, args.path, get_cache() )
@@ -388,18 +348,55 @@ def rowpack(args=None):
     from operator import itemgetter
     import sys
 
-    if not args:
-        parser = rowpack_make_arg_parser()
-        args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        prog='ampr',
+        description='Ambry Message Pack Rows file access version:'.format(__version__))
+
+    group = parser.add_mutually_exclusive_group()
+
+    parser.add_argument('-f', '--info', action='store_true',
+                        help='Show general information header')
+
+    group.add_argument('-m', '--meta', action='store_true',
+                       help='Show metadata')
+    group.add_argument('-t', '--types', action='store_true',
+                       help='Show types table')
+    group.add_argument('-s', '--schema', action='store_true',
+                       help='Show the schema')
+    group.add_argument('-r', '--rowspec', action='store_true',
+                       help='Print the rowspec')
+    group.add_argument('-H', '--head', action='store_true',
+                       help='Display the first 10 records. Will only display 80 chars wide')
+    group.add_argument('-T', '--tail', action='store_true',
+                       help='Display the first last 10 records. Will only display 80 chars wide')
+    parser.add_argument('-e', '--edit', action='store_true',
+                        help='With -H or -T, edit line types')
+    group.add_argument('-i', '--intuition', action='store_true',
+                       help='Run type intuition and stats')
+    group.add_argument('-c', '--csv', help='Output the entire file as CSV')
+    parser.add_argument('-R', '--raw', action='store_true',
+                        help='With --csv, return all rows, ignoring rowspec')
+
+    group.add_argument('-b', '--table', action='store_true',
+                       help='Display a selection of records in a table')
+    group.add_argument('-l', '--limit', help='The number of rows to output for CSV ')
+
+    group = parser.add_argument_group()
+    group.add_argument('-I', '--ingest', help='Ingest a url and write the result to a rowpack file. ')
+    group.add_argument('--encoding', help='Set ingestion encoding')
+    group.add_argument('--filetype', help='Set the type of the file that will be imported')
+    group.add_argument('--urlfiletype', help='Set the type of the file that will be downloaded')
+
+    parser.add_argument('path', nargs='?', type=binary_type, help='File path')
+
+    args = parser.parse_args()
 
     schema_fields = ['pos', 'name', 'datatype', 'count', 'nuniques', 'min', 'mean', 'max', 'std', 'description']
     schema_getter = itemgetter(*schema_fields)
 
-    types_fields = ['header', 'type_count', 'length', 'floats', 'ints', 'unicode', 'strs', 'dates',
-                    'times', 'datetimes', 'nones', 'has_codes']
-
     if args.ingest:
-        ingest(args.ingest, args.path, get_cache())
+        ingest(args.ingest, args.path, get_cache(),
+               encoding=args.encoding, filetype=args.filetype, urlfiletype=args.urlfiletype )
         return
 
     # All of the remaining options require a path
@@ -424,7 +421,6 @@ def rowpack(args=None):
             pm('cols', r.n_cols)
             pm('headers', r.headers)
             pm('rowspec', row_spec_str(r=r))
-
 
     if not path:
         print "ERROR: must specify a path"
@@ -536,7 +532,6 @@ def rowpack(args=None):
             with RowpackReader(path) as r:
                 rows, headers = head_tail(r, args.head)
                 print(tabulate.tabulate(rows, ['T', '#'] + headers))
-
 
         return
 
