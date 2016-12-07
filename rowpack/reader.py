@@ -125,3 +125,31 @@ class RowpackReader(object):
 
         zfh.close()
 
+    @property
+    def data_rows(self):
+        """A generator that returns only the datarows, if a rowspec is defined"""
+        from rowgenerators import DataRowGenerator
+
+        srg = DataRowGenerator(self, **self.meta['rowspec'])
+
+        srg.headers = self.headers
+
+        return srg
+
+    @property
+    def typed_rows(self):
+        """Like data_rows, but also uses rowpipe to perform type conversion to the types in the schema"""
+        from rowpipe import Table, RowProcessor
+
+        t = Table('dest_table')
+        for c in self.schema:
+            t.add_column(name=c.name, datatype=c.datatype)
+
+        for row in RowProcessor(self.data_rows, t):
+            yield row
+
+
+def TypeConvertingReader(RowpackReader):
+    """A Reader subclass that uses rowpipe to convert row data to the types specified in the schema"""
+
+

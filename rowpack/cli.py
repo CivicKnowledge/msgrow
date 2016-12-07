@@ -16,7 +16,7 @@ from six import binary_type
 
 import tabulate
 
-from . import RowpackWriter, RowpackReader, intuit_rows, intuit_types, run_stats
+from . import RowpackWriter, RowpackReader,  intuit_types, run_stats, ingest
 
 from .__meta__ import __version__
 
@@ -230,105 +230,15 @@ def row_spec_str(path=None, r=None):
     return out
 
 
-def resolve_url(ss, cache):
-    """Return a list of sub-components of a Spec, such as files in a ZIP archive,
-    or worksheed in a spreadsheet"""
-
-    from rowgenerators.fetch import inspect
-
-    while True:
-        specs = inspect(ss, cache)
-
-        if not specs:
-            return ss
-
-        print "\nURL has multiple internal files. Select one:"
-        for i, e in enumerate(specs):
-            print i, e.url_str()
-
-        while True:
-            i = raw_input('Select: ')
-            try:
-                ss = specs[int(i)]
-                break
-            except ValueError:
-                print "ERROR: enter an integer"
-            except IndexError:
-                print "ERROR: entry out of range"
-
-
-def ingest(url, path, cache, encoding=None, filetype=None, urlfiletype = None):
-
-    from rowgenerators import RowGenerator, SourceSpec
-
-    from tableintuit.exceptions import RowIntuitError
-    import sys
-
-    # There are certainly better ways to do this, like chardet or UnicodeDammit,
-    # but in several years, I've never seen a data file that wasn't ascii, utf8 or latin1,
-    # so i'm punting. Until there is a better solution, users should use a caracter detecting program,
-    # then explicitly set the encoding parameter.
-    for encoding in ('ascii', 'utf8', 'latin1'):
-
-        d = dict(
-            url=url,
-            encoding=encoding,
-            filetype=filetype,
-            urlfiletype=urlfiletype
-        )
-
-
-        ss = resolve_url(SourceSpec(**d), cache)
-        gen = ss.get_generator(cache)
-
-        if not path:
-            path = ss.file_name + '.rp'
-
-        print 'Ingesting {} into {}, encoding = {}'.format(url, path, encoding)
-
-        try:
-            with RowpackWriter(path) as w:
-                for row in gen:
-                    w.write_row(row)
-                w.meta['encoding'] = encoding
-                w.meta['url'] = url
-                break
-        except UnicodeDecodeError:
-            print "WARNING: encoding failed, trying another"
-            continue
-
-    else:
-        print "ERROR: all encodings failed"
-        sys.exit(1)
-
-    # Need to re-open b/c n_rows isn't set until the writer is closed
-    with RowpackReader(path) as r:
-        print "Wrote {} rows".format(r.n_rows)
-
-    try:
-        ri = intuit_rows(path)
-
-        if ri.start_line < 1:
-            print "WARNING: Row intuition could not find start line; skipping type intuition and stats"
-            print "Set row types manually with -H -e "
-        else:
-            intuit_types(path)
-            run_stats(path)
-
-    except RowIntuitError as e:
-        print "ERROR ", e
-        sys.exit(1)
-
-    with RowpackWriter(path, 'r+b') as w:
-        w.meta['sourcespec'] = ss.dict
-
-
 def get_cache():
     from fs.opener import fsopendir
     import tempfile
 
     return fsopendir(tempfile.gettempdir())
 
+
+def ingest_cb(v):
+    print v
 
 def rpingest(args=None):
 
@@ -341,7 +251,11 @@ def rpingest(args=None):
 
     args = parser.parse_args()
 
-    ingest(args.url, args.path, get_cache() )
+    path, encoding, warnings = ingest(args.url, args.path, get_cache(), cb=ingest_cb )
+    print "Ingested ", path
+    if warnings:
+        for w in warnings:
+            print w
 
 
 def rowpack(args=None):
@@ -395,8 +309,14 @@ def rowpack(args=None):
     schema_getter = itemgetter(*schema_fields)
 
     if args.ingest:
-        ingest(args.ingest, args.path, get_cache(),
-               encoding=args.encoding, filetype=args.filetype, urlfiletype=args.urlfiletype )
+        path, encoding, warnings = ingest(args.ingest, args.path, get_cache(),
+               encoding=args.encoding, filetype=args.filetype, urlfiletype=args.urlfiletype, cb=ingest_cb )
+
+        print "Ingested ", path
+        if warnings:
+            for w in warnings:
+                print w
+
         return
 
     # All of the remaining options require a path

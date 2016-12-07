@@ -8,6 +8,7 @@
 import sys
 from six import text_type, binary_type
 import datetime
+from tabulate import tabulate
 
 types_map = {
     'int': int,
@@ -56,6 +57,8 @@ class Column(object):
         return self.__dict__
 
 
+
+
 class Schema(object):
 
     def __init__(self):
@@ -100,6 +103,14 @@ class Schema(object):
             s.columns.append(c)
 
         return s
+
+    def __str__(self):
+        from operator import itemgetter
+        schema_fields = ['pos', 'name', 'datatype', 'count', 'nuniques', 'min', 'mean', 'max', 'std', 'description']
+        schema_getter = itemgetter(*schema_fields)
+
+        return (tabulate((schema_getter(s.dict) for s in self.columns), schema_fields))
+
 
 
 

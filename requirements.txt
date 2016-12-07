@@ -1,6 +1,6 @@
-
 msgpack-python
 six
 contexttimer
 pyfs
 livestats
+git+https://github.com/CivicKnowledge/rowpipe.git#egg=rowpipe

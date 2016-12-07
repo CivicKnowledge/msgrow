@@ -12,4 +12,5 @@ Exceptions
 class RowpackError(Exception):
     pass
 
-
+class IngestionError(RowpackError):
+    pass

@@ -1,5 +1,5 @@
+from __future__ import print_function
 import unittest
-
 from rowpack import RowpackReader, RowpackWriter, Schema
 
 
@@ -54,7 +54,7 @@ class TestBasic(unittest.TestCase):
         s2 = Schema.from_rows(s.to_rows())
 
         for c in s2:
-            print c.pos, c.name, c.datatype
+            print (c.pos, c.name, c.datatype)
 
     def make_simple_rw_data(self, n=None):
         import datetime
@@ -231,7 +231,6 @@ class TestBasic(unittest.TestCase):
                 sum = 0
                 count = 0
                 for row in r:
-
                     row = [int(row[0]), int(row[1]), row[2], row[3], float(row[4]) ]
                     sum += row[0]
                     count += 1
@@ -293,7 +292,7 @@ class TestBasic(unittest.TestCase):
             rpw.close()
 
         print('Read RP                ', float(N) / t.elapsed)
-        print count, sum
+        print (count, sum)
 
         # This runs about twice as fast under pypy
         with Timer() as t:
@@ -315,7 +314,7 @@ class TestBasic(unittest.TestCase):
                     count += 1
 
         print('Read AVRO records      ', float(N) / t.elapsed)
-        print count, sum
+        print (count, sum)
 
         avro_schema = {
             "type": "array",
@@ -342,8 +341,41 @@ class TestBasic(unittest.TestCase):
                     count += 1
 
         print('Read AVRO array        ', float(N) / t.elapsed)
-        print count, sum
+        print (count, sum)
 
+    def test_type_conversion(self):
+
+        from contexttimer import Timer
+
+        url = 'http://public.source.civicknowledge.com/example.com/sources/renter_cost.csv'
+
+        #path, encoding, warnings = ingest(url, cb=print)
+
+        path = '/Volumes/Storage/proj/virt/ambry/rowpack/test/renter_cost.rp'
+
+        with RowpackReader(path) as r:
+            N = r.n_rows
+
+        sum = 0
+        with Timer() as t:
+            with RowpackReader(path) as r:
+                for row in r:
+                    sum += len(row[0])
+        print('Main Iter', float(N) / t.elapsed)
+
+        sum = 0
+        with Timer() as t:
+            with RowpackReader(path) as r:
+                for row in r.data_rows:
+                    sum += len(row[0])
+        print('Data rows', float(N) / t.elapsed)
+
+        sum = 0
+        with Timer() as t:
+            with RowpackReader(path) as r:
+                for row in r.typed_rows:
+                    sum += row[0]
+        print('Type Rows', float(N) / t.elapsed)
 
 if __name__ == '__main__':
     unittest.main()
