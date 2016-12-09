@@ -16,7 +16,8 @@ def get_cache():
     return fsopendir(tempfile.gettempdir())
 
 
-def ingest(url, path=None, cache=None, encoding=None, filetype=None, urlfiletype=None, cb=None):
+def ingest(url, path=None, cache=None, encoding=None, filetype=None, urlfiletype=None,
+           cb=None, url_resolver=None):
     """
 
     :param url:
@@ -59,7 +60,11 @@ def ingest(url, path=None, cache=None, encoding=None, filetype=None, urlfiletype
             urlfiletype=urlfiletype
         )
 
-        ss = resolve_url(SourceSpec(**d), cache)
+        if url_resolver:
+            ss = url_resolver(SourceSpec(**d), cache)
+        else:
+            ss = SourceSpec(**d)
+
         gen = ss.get_generator(cache)
 
         if not in_path:
@@ -73,6 +78,7 @@ def ingest(url, path=None, cache=None, encoding=None, filetype=None, urlfiletype
                     w.write_row(row)
                 w.meta['encoding'] = encoding
                 w.meta['url'] = url
+                w.meta['filename'] = path
                 break
         except UnicodeDecodeError:
             warnings.append("WARNING: encoding failed, trying another")
@@ -108,28 +114,4 @@ def ingest(url, path=None, cache=None, encoding=None, filetype=None, urlfiletype
 
     return path, encoding, warnings
 
-def resolve_url(ss, cache):
-    """Return a list of sub-components of a Spec, such as files in a ZIP archive,
-    or worksheed in a spreadsheet"""
 
-    from rowgenerators.fetch import inspect
-
-    while True:
-        specs = inspect(ss, cache)
-
-        if not specs:
-            return ss
-
-        print "\nURL has multiple internal files. Select one:"
-        for i, e in enumerate(specs):
-            print i, e.url_str()
-
-        while True:
-            i = raw_input('Select: ')
-            try:
-                ss = specs[int(i)]
-                break
-            except ValueError:
-                print "ERROR: enter an integer"
-            except IndexError:
-                print "ERROR: entry out of range"

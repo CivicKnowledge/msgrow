@@ -346,12 +346,15 @@ class TestBasic(unittest.TestCase):
     def test_type_conversion(self):
 
         from contexttimer import Timer
+        from rowpack import ingest
+
 
         url = 'http://public.source.civicknowledge.com/example.com/sources/renter_cost.csv'
 
-        #path, encoding, warnings = ingest(url, cb=print)
+        path, encoding, warnings = ingest(url, cb=print)
 
-        path = '/Volumes/Storage/proj/virt/ambry/rowpack/test/renter_cost.rp'
+        #path = '/Volumes/Storage/proj/virt/ambry/rowpack/test/renter_cost.rp'
+
 
         with RowpackReader(path) as r:
             N = r.n_rows
@@ -376,6 +379,9 @@ class TestBasic(unittest.TestCase):
                 for row in r.typed_rows:
                     sum += row[0]
         print('Type Rows', float(N) / t.elapsed)
+
+
+
 
 if __name__ == '__main__':
     unittest.main()

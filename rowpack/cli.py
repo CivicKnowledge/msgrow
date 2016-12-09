@@ -16,10 +16,9 @@ from six import binary_type
 
 import tabulate
 
-from . import RowpackWriter, RowpackReader,  intuit_types, run_stats, ingest
+from . import RowpackWriter, RowpackReader, intuit_types, run_stats, ingest
 
 from .__meta__ import __version__
-
 
 
 def mk_row_types(r):
@@ -51,7 +50,7 @@ def mk_row_types(r):
 
         for i in range(r.n_rows - rt_end, int(rs.get('end'))):
             row_types[i] = 'D'
-    elif r.n_rows > rt_end :
+    elif r.n_rows > rt_end:
         for i in range(r.n_rows - rt_end, r.n_rows):
             row_types[i] = 'D'
 
@@ -198,6 +197,33 @@ def edit(path, head):
             edit_types(w, line_n, type)
 
 
+def resolve_url(ss, cache):
+    """Return a list of sub-components of a Spec, such as files in a ZIP archive,
+    or worksheed in a spreadsheet"""
+
+    from rowgenerators.fetch import inspect
+
+    while True:
+        specs = inspect(ss, cache, callback=progress_callback)
+
+        if not specs or len(specs) <= 1:
+            return ss
+
+        print "\nURL has multiple internal files. Select one:"
+        for i, e in enumerate(specs):
+            print i, e.url_str()
+
+        while True:
+            i = raw_input('Select: ')
+            try:
+                ss = specs[int(i)]
+                break
+            except ValueError:
+                print "ERROR: enter an integer"
+            except IndexError:
+                print "ERROR: entry out of range"
+
+
 def row_spec_str(path=None, r=None):
     if r is None:
         r = RowpackReader(path)
@@ -240,8 +266,8 @@ def get_cache():
 def ingest_cb(v):
     print v
 
-def rpingest(args=None):
 
+def rpingest(args=None):
     parser = argparse.ArgumentParser(
         prog='rpingest',
         description='Ingest tabular data into a rowpack file. version:'.format(__version__))
@@ -251,11 +277,16 @@ def rpingest(args=None):
 
     args = parser.parse_args()
 
-    path, encoding, warnings = ingest(args.url, args.path, get_cache(), cb=ingest_cb )
+    path, encoding, warnings = ingest(args.url, args.path, get_cache(), cb=ingest_cb, url_resolver=resolve_url)
     print "Ingested ", path
     if warnings:
         for w in warnings:
             print w
+
+
+def progress_callback(actitity, arg1, arg2):
+
+    print actitity, arg1, arg2
 
 
 def rowpack(args=None):
@@ -263,8 +294,8 @@ def rowpack(args=None):
     import sys
 
     parser = argparse.ArgumentParser(
-        prog='ampr',
-        description='Ambry Message Pack Rows file access version:'.format(__version__))
+        prog='rowpack',
+        description='Ambry Message Pack Rows file access. Version: {}'.format(__version__))
 
     group = parser.add_mutually_exclusive_group()
 
@@ -285,7 +316,7 @@ def rowpack(args=None):
                        help='Display the first last 10 records. Will only display 80 chars wide')
     parser.add_argument('-e', '--edit', action='store_true',
                         help='With -H or -T, edit line types')
-    group.add_argument('-i', '--intuition', action='store_true',
+    group.add_argument('-I', '--intuition', action='store_true',
                        help='Run type intuition and stats')
     group.add_argument('-c', '--csv', help='Output the entire file as CSV')
     parser.add_argument('-R', '--raw', action='store_true',
@@ -295,31 +326,71 @@ def rowpack(args=None):
                        help='Display a selection of records in a table')
     group.add_argument('-l', '--limit', help='The number of rows to output for CSV ')
 
+    group.add_argument('-p', '--inspect', action='store_true',
+                       help='Inspect a URL and report on the available lower-level URLs ')
+
     group = parser.add_argument_group()
-    group.add_argument('-I', '--ingest', help='Ingest a url and write the result to a rowpack file. ')
-    group.add_argument('--encoding', help='Set ingestion encoding')
-    group.add_argument('--filetype', help='Set the type of the file that will be imported')
-    group.add_argument('--urlfiletype', help='Set the type of the file that will be downloaded')
+    group.add_argument('-i', '--ingest', action='store_true',
+                       help='Ingest a url and write the result to a rowpack file. ')
+    group.add_argument('-a', '--all', action='store_true', help='With -i ingest all of the files; don\'t ask to resolve url')
+    group.add_argument('-o', '--output',  help='With -i, the name of the output file to write the rowpack file to')
+
+    group.add_argument('--encoding', help='With -i, Set ingestion encoding')
+    group.add_argument('--filetype', help='With -i, Set the type of the file that will be imported')
+    group.add_argument('--urlfiletype', help='With -i, Set the type of the file that will be downloaded')
 
     parser.add_argument('path', nargs='?', type=binary_type, help='File path')
 
     args = parser.parse_args()
 
+
     schema_fields = ['pos', 'name', 'datatype', 'count', 'nuniques', 'min', 'mean', 'max', 'std', 'description']
     schema_getter = itemgetter(*schema_fields)
 
-    if args.ingest:
-        path, encoding, warnings = ingest(args.ingest, args.path, get_cache(),
-               encoding=args.encoding, filetype=args.filetype, urlfiletype=args.urlfiletype, cb=ingest_cb )
+    if args.ingest and not args.all:
+        path, encoding, warnings = ingest(args.path, args.output, get_cache(),
+                                          encoding=args.encoding, filetype=args.filetype, urlfiletype=args.urlfiletype,
+                                          cb=ingest_cb,
+                                          url_resolver=resolve_url)
 
         print "Ingested ", path
         if warnings:
+            print "Warnings for {}".format(path)
             for w in warnings:
-                print w
+                print "    ", w
+
+        return
+    elif args.ingest:
+
+        from rowgenerators import enumerate_contents, SourceError
+
+        for ss in enumerate_contents(args.path, get_cache(), callback=progress_callback):
+            try:
+                path, encoding, warnings = ingest(ss.url_str(),
+                                                  cache=get_cache(),
+                                                  cb=ingest_cb,
+                                                  url_resolver=None)
+                print "Ingested ", path
+                if warnings:
+                    print "Warnings for {}".format(path)
+                    for w in warnings:
+                        print "    ", w
+
+            except SourceError as e:
+                print "WARN: Failed to ingest {}: {}".format(ss.url_str(), e)
 
         return
 
+
     # All of the remaining options require a path
+
+    if args.inspect:
+        from rowgenerators import enumerate_contents
+
+        for s in enumerate_contents(args.path, get_cache(), callback=progress_callback):
+            print s.url_str()
+
+        return
 
     path = args.path
 
@@ -380,13 +451,11 @@ def rowpack(args=None):
 
         return
 
-
     if args.info:
         show_info()
         info_shown = True
     else:
         info_shown = False
-
 
     if args.intuition:
         print "Run type intuition"
@@ -423,7 +492,7 @@ def rowpack(args=None):
 
         with RowpackReader(path) as r:
             types_rows = r.meta.get('types', [])
-            rows = [ ig(row) for row in types_rows ]
+            rows = [ig(row) for row in types_rows]
 
             print tabulate.tabulate(rows, table_header)
 
@@ -432,7 +501,6 @@ def rowpack(args=None):
     if args.rowspec:
         print row_spec_str(path)
         return
-
 
     if args.schema:
         print('\nSCHEMA')
@@ -487,8 +555,68 @@ def rowpack(args=None):
 
 
 
+def mkmetatab():
+
+    from metatab import MetatabDoc
+    from rowpack import RowpackFormatError
+
+    parser = argparse.ArgumentParser(
+        prog='mkmetatab',
+        description='Create a metatab file from one or more rowpack files. Version: {}'.format(__version__))
+
+    parser.add_argument('paths', nargs='+', type=binary_type, help='File paths')
+
+    args = parser.parse_args()
+
+    doc = MetatabDoc()
+    root = doc.new_section('Root')
+    source_sec = doc.new_section('Sources', 'name start end headers comments encoding'.split())
+    sch = doc.new_section('Schema', 'datatype description'.split())
+
+    root.new_term('Declare', 'http://assets.metatab.org/metatab.csv')
+    root.new_term('Title', '')
+
+    source_names = set()
+
+    for path in args.paths:
+
+        try:
+            with RowpackReader(path) as r:
+                meta = r.meta
+
+                if not meta.get('url'):
+                    continue
+
+                rowspec = meta.get('rowspec',{})
+
+                base_name = name = path.replace('.rp','')
+                name_index = 0
+                while name in source_names:
+                    name_index += 1
+                    name = base_name+'-'+str(name_index)
+
+                source_sec.new_term('Datafile',
+                                    meta.get('url'),
+                                    name=name,
+                                    start=rowspec.get('start',1),
+                                    end=rowspec.get('end',''),
+                                    headers=','.join(str(e) for e in rowspec.get('headers',[0])),
+                                    comments=','.join(str(e) for e in rowspec.get('comments', [])),
+                                    encoding=meta.get('encoding'));
+
+
+                if len(list(r.schema)):
+                    t = sch.new_term('Table', name)
+
+                    for c in r.schema:
+                        t.new_child('Column', c.name, datatype=c.datatype)
+
+
+        except RowpackFormatError:
+            print "WARN: Not a rowpack file: {} ".format(path)
+
+    doc.write_csv('metatab.csv')
+
 if __name__ == '__main__':
     rowpack()
     sys.exit(0)
-
-

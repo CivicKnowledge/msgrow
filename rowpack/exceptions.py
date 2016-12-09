@@ -14,3 +14,6 @@ class RowpackError(Exception):
 
 class IngestionError(RowpackError):
     pass
+
+class RowpackFormatError(RowpackError):
+    pass

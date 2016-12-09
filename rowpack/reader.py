@@ -53,11 +53,17 @@ class RowpackReader(object):
             self._fh = None
 
     def read_file_header(self):
+        from .exceptions import RowpackFormatError
         try:
             self.magic, self.version, self.n_rows, self.n_cols, self.data_start, self.data_end, self.meta_end = \
                 self.FILE_HEADER_FORMAT.unpack(self._fh.read(self.FILE_HEADER_FORMAT_SIZE))
         except struct.error as e:
             raise IOError('Failed to read file header; {}; path = {}'.format(e, self.parent.path))
+
+        if self.magic != self.MAGIC:
+            raise RowpackFormatError("Didn't get correct magic header: '{}' "\
+                                     .format(self.magic.decode('utf8','replace').encode('ascii', 'replace')))
+
 
     def read_meta(self):
         from rowpack import Schema
@@ -71,7 +77,7 @@ class RowpackReader(object):
 
         b = self._fh.read(self.meta_end-self.data_end)
 
-        assert len(b) == self.meta_end-self.data_end
+        assert len(b) == self.meta_end-self.data_end, self.path
 
         d = msgpack.unpackb(b, encoding='utf-8')
 
@@ -145,7 +151,7 @@ class RowpackReader(object):
         for c in self.schema:
             t.add_column(name=c.name, datatype=c.datatype)
 
-        for row in RowProcessor(self.data_rows, t):
+        for row in RowProcessor(self.data_rows, t, source_headers=self.headers):
             yield row
 
 

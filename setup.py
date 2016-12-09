@@ -57,6 +57,7 @@ setup(
         'console_scripts': [
             'rowpack=rowpack.cli:rowpack',
             'rpingest=rowpack.cli:rpingest',
+            'mkmetatab=rowpack.cli:mkmetatab',
         ],
     },
 )
